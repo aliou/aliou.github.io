@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    
+  <title>Changing perception of objects by overriding the inspect method &mdash; Aliou Diallo</title>
+  <meta name='og:title' content="Changing perception of objects by overriding the inspect method - Aliou Diallo" />
+
+
+<meta name='twitter:site' content='@aliouftw' />
+<meta name='twitter:title' content='Aliou Diallo' />
+
+
+  <meta name='twitter:title' content="Changing perception of objects by overriding the inspect method &mdash; Aliou Diallo" />
+
+
+
+  <meta name='description' content="Let's see how Ruby allows us to override the inspect method to change how an object is perceived.
+" />
+  <meta name='og:description' content="Let's see how Ruby allows us to override the inspect method to change how an object is perceived.
+" />
+  <meta name='twitter:description' content="Let's see how Ruby allows us to override the inspect method to change how an object is perceived.
+" />
+
+
+
+  <meta property="twitter:card" content="summary_large_image">
+
+
+
+    <meta charset="UTF-8">
+    <meta name="google-site-verification" content="QnLybeTUEt_VtHQVLLtEz0WflVe-H7TNqCOTlF-tfz8" />
+    <meta name='author' content='Aliou Diallo' />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <link href="/posts/2020/02/overriding-inspect/" rel="canonical" />
+
+    <link rel="stylesheet" type="text/css" href="/assets/styles.css">
+    <link rel="stylesheet" type="text/css" href="/assets/base16-default.dark.css">
+    <link rel="stylesheet" type="text/css" href="/assets/base16-default.light.css">
+  </head>
+  <body class='container'>
+    <header>
+  <h1 class="header-title">
+    <a class='header-link not-underlined' href="/">Aliou Diallo</a>
+  </h1>
+  <nav class="header-nav">
+    <a class='not-underlined header-link' href="/posts">Posts</a>
+    <a class='not-underlined header-link' href="https://twitter.com/aliouftw" target='_blank'>Twitter</a>
+    <a class='not-underlined header-link' href="https://github.com/aliou" target='_blank'>GitHub</a>
+    <a class='not-underlined header-link' href="https://hachyderm.io/@aliouftw" rel="me">Mastodon</a>
+  </nav>
+</header>
+
+    <main class='content'>
+      <article class='post-container'>
+  <h1 class='archive-post-title'>
+    <a class='header-link not-underlined' href='/posts/2020/02/overriding-inspect/'>
+      Changing perception of objects by overriding the inspect method
+    </a>
+  </h1>
+  <time class="f6 tracked gray">February 18, 2020</time>
+  
+
+  <p class="f4 lh-title"><p>While writing my <a href="/2019/10/attributes-api-and-value-objects/">previous post</a>, I realized that while using the attributes API allows us to avoid making mistakes when instantiating our value objects, it might not entirely convey that there’s a limited number of objects that can be instantiated <sup id="fnref:1" role="doc-noteref"><a href="#fn:1" class="footnote">1</a></sup>.</p>
+
+<p>To this end, I thought about a way to prevent this: let’s pretend that our value objects are constants.</p>
+
+<hr />
+
+<h2 id="generating-constants">Generating constants</h2>
+
+<p>First, let’s take our <code class="highlighter-rouge">Ship::Category</code> from the previous post:</p>
+
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Ship</span><span class="o">::</span><span class="no">Category</span>
+  <span class="no">VALID_CATEGORIES</span> <span class="o">=</span> <span class="sx">%w(
+    shuttle supply_carrier troop_carrier war_ship
+  )</span><span class="p">.</span><span class="nf">freeze</span>
+
+  <span class="k">def</span> <span class="nf">initialize</span><span class="p">(</span><span class="n">category</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="s2">"invalid category: </span><span class="si">#{</span><span class="n">category</span><span class="p">.</span><span class="nf">inspect</span><span class="si">}</span><span class="s2">"</span> <span class="k">unless</span> <span class="n">category</span><span class="p">.</span><span class="nf">in?</span><span class="p">(</span><span class="no">VALID_CATEGORIES</span><span class="p">)</span>
+
+    <span class="vi">@raw_category</span> <span class="o">=</span> <span class="n">category</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">to_s</span>
+    <span class="n">raw_category</span>
+  <span class="k">end</span>
+
+  <span class="kp">private</span>
+
+  <span class="nb">attr_reader</span> <span class="ss">:raw_category</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<p>Let’s start by defining constants for each of our values. Under the <code class="highlighter-rouge">initialize</code> method <sup id="fnref:2" role="doc-noteref"><a href="#fn:2" class="footnote">2</a></sup>, let’s create the constants using <a href="https://www.rubydoc.info/stdlib/core/Module:const_set"><code class="highlighter-rouge">const_set</code></a> and a bit of metaprogramming:</p>
+
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Shift</span><span class="o">::</span><span class="no">Category</span>
+  <span class="c1"># ...</span>
+
+  <span class="no">VALID_CATEGORIES</span><span class="p">.</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">raw_category</span><span class="o">|</span>
+    <span class="nb">const_set</span><span class="p">(</span><span class="n">raw_category</span><span class="p">.</span><span class="nf">upcase</span><span class="p">,</span> <span class="n">new</span><span class="p">(</span><span class="n">raw_category</span><span class="p">))</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<p>Calling <a href="https://www.rubydoc.info/stdlib/core/Module:constants"><code class="highlighter-rouge">Ship::Category.constants</code></a> show us that our constants have correctly been created:</p>
+
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="no">Ship</span><span class="o">::</span><span class="no">Category</span><span class="p">.</span><span class="nf">constants</span>
+<span class="c1"># =&gt; [:WAR_SHIP, :TROOP_CARRIER, :SHUTTLE, :SUPPLY_CARRIER, :VALID_CATEGORIES]</span>
+</code></pre></div></div>
+
+<p>However, inspecting the constant reveals our trickery:</p>
+
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="no">Ship</span><span class="o">::</span><span class="no">Category</span><span class="o">::</span><span class="no">SHUTTLE</span>
+<span class="c1"># =&gt; #&lt;Ship::Category:0x00007fbddc853350 @raw_category="shuttle"&gt;</span>
+</code></pre></div></div>
+
+<p>So, how do we really pretend that our <code class="highlighter-rouge">Ship::Category</code> object is truly a constant ? We can do this by overriding the <a href="https://www.rubydoc.info/stdlib/core/Object:inspect"><code class="highlighter-rouge">inspect</code></a> method:</p>
+
+<h2 id="overriding-inspect">Overriding inspect</h2>
+
+<p>As we can see above, by default, <code class="highlighter-rouge">inspect</code> returns the class name, a representation of the memory address of the object and a list of instance variables of the object.</p>
+
+<p>In our case, we want <code class="highlighter-rouge">inspect</code> to instead display how the object should be accessed. This means making it look like the constants we’ve created above:</p>
+
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Shift</span><span class="o">::</span><span class="no">Category</span>
+  <span class="c1"># ...</span>
+
+  <span class="k">def</span> <span class="nf">inspect</span>
+    <span class="s2">"</span><span class="si">#{</span><span class="nb">self</span><span class="p">.</span><span class="nf">class</span><span class="si">}</span><span class="s2">::</span><span class="si">#{</span><span class="n">raw_category</span><span class="p">.</span><span class="nf">upcase</span><span class="si">}</span><span class="s2">"</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<p>With this, the value object is now displayed as a constant when inspecting the object or in logs:</p>
+
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Before we had:</span>
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="no">Ship</span><span class="o">::</span><span class="no">Category</span><span class="o">::</span><span class="no">SHUTTLE</span>
+<span class="c1"># =&gt; #&lt;Ship::Category:0x00007fbddc853350 @raw_category="shuttle"&gt;</span>
+
+<span class="c1"># Now we have</span>
+<span class="n">pry</span><span class="p">(</span><span class="n">main</span><span class="p">)</span><span class="o">&gt;</span> <span class="no">Ship</span><span class="o">::</span><span class="no">Category</span><span class="o">::</span><span class="no">SHUTTLE</span>
+<span class="c1"># =&gt; Ship::Category::SHUTTLE</span>
+</code></pre></div></div>
+
+<!-- As I write this, I realize that this might be one of those time where Ruby allows you to do -->
+
+<hr />
+
+<p>Besides indulging in my whims, there are other interesting reasons to override inspect:</p>
+<ul>
+  <li>This is useful to hide sensitive values like emails or encrypted passwords, as <a href="https://github.com/heartcombo/devise/blob/v4.7.1/lib/devise/models/authenticatable.rb#L120-L125">Devise does it</a>.</li>
+  <li>Since Rails 6, you can <a href="https://github.com/rails/rails/pull/33756/files">configure ActiveRecord to filter attributes from inspection</a>. This is also done by <a href="https://github.com/rails/rails/pull/33756">overriding the <code class="highlighter-rouge">inspect</code> method</a>.</li>
+  <li>The <code class="highlighter-rouge">IPAddr</code> class also <a href="https://github.com/ruby/ruby/blob/v2_7_0/lib/ipaddr.rb#L457-L468">overrides the inspect method</a> to display a human readable representation of the IP address.</li>
+</ul>
+
+<p><small>The code examples in this post are also available <a href="https://github.com/aliou/ships-category" target="blank">on GitHub</a>.
+Thanks to <a href="https://twitter.com/caouibachir" target="_blank">Bachir Çaoui</a> and Stéphanie Chhim for reviewing a draft version of this post.</small></p>
+
+<hr />
+
+<div class="footnotes" role="doc-endnotes">
+  <ol>
+    <li id="fn:1" role="doc-endnote">
+      <p>Of course, we could look at the file defining the constants, but where would be the fun in that? <a href="#fnref:1" class="reversefootnote" role="doc-backlink">&#8617;</a></p>
+    </li>
+    <li id="fn:2" role="doc-endnote">
+      <p>Because our constants are set directly in the class, the <code class="highlighter-rouge">new</code> method needs to be already defined, hence defining them under the initialize method. <a href="#fnref:2" class="reversefootnote" role="doc-backlink">&#8617;</a></p>
+    </li>
+  </ol>
+</div>
+</p>
+</article>
+
+    </main>
+  </body>
+  <script src="/assets/app.js" type="text/javascript"></script>
+</html>

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    
+  <title>Postgres timestamp ranges in Ecto &mdash; Aliou Diallo</title>
+  <meta name='og:title' content="Postgres timestamp ranges in Ecto - Aliou Diallo" />
+
+
+<meta name='twitter:site' content='@aliouftw' />
+<meta name='twitter:title' content='Aliou Diallo' />
+
+
+  <meta name='twitter:title' content="Postgres timestamp ranges in Ecto &mdash; Aliou Diallo" />
+
+
+
+  <meta name='description' content="Making a custom `Ecto.Type` to use a native Postgres type" />
+  <meta name='og:description' content="Making a custom `Ecto.Type` to use a native Postgres type" />
+  <meta name='twitter:description' content="Making a custom `Ecto.Type` to use a native Postgres type" />
+
+
+
+  <meta property="twitter:card" content="summary_large_image">
+
+
+
+    <meta charset="UTF-8">
+    <meta name="google-site-verification" content="QnLybeTUEt_VtHQVLLtEz0WflVe-H7TNqCOTlF-tfz8" />
+    <meta name='author' content='Aliou Diallo' />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <link href="/posts/2018/09/postgres-tsranges-in-ecto/" rel="canonical" />
+
+    <link rel="stylesheet" type="text/css" href="/assets/styles.css">
+    <link rel="stylesheet" type="text/css" href="/assets/base16-default.dark.css">
+    <link rel="stylesheet" type="text/css" href="/assets/base16-default.light.css">
+  </head>
+  <body class='container'>
+    <header>
+  <h1 class="header-title">
+    <a class='header-link not-underlined' href="/">Aliou Diallo</a>
+  </h1>
+  <nav class="header-nav">
+    <a class='not-underlined header-link' href="/posts">Posts</a>
+    <a class='not-underlined header-link' href="https://twitter.com/aliouftw" target='_blank'>Twitter</a>
+    <a class='not-underlined header-link' href="https://github.com/aliou" target='_blank'>GitHub</a>
+    <a class='not-underlined header-link' href="https://hachyderm.io/@aliouftw" rel="me">Mastodon</a>
+  </nav>
+</header>
+
+    <main class='content'>
+      <article class='post-container'>
+  <h1 class='archive-post-title'>
+    <a class='header-link not-underlined' href='/posts/2018/09/postgres-tsranges-in-ecto/'>
+      Postgres timestamp ranges in Ecto
+    </a>
+  </h1>
+  <time class="f6 tracked gray">September 18, 2018</time>
+  
+    <a class="black" href="https://github.com/aliou/www/commits/master/_posts/2018-09-18-postgres-tsranges-in-ecto.md" target="_blank">Post history</a>
+  
+
+  <p class="f4 lh-title"><p>I recently read a post on <a href="https://tapoueh.org/blog/2018/04/postgresql-data-types-ranges" target="blank">Postgres’s range types</a> and have
+been trying to take advantage of them in my code.</p>
+
+<p>However, because some of these types aren’t shared between the different SQL
+databases, most Object Relation Mapping like <a href="https://guides.rubyonrails.org/active_record_basics.html">Ruby on Rails’s ActiveRecord</a> and
+database wrappers (e.g. <a href="https://hexdocs.pm/ecto/Ecto.html" target="blank">Elixir’s Ecto</a>) don’t support them.</p>
+
+<p>Thankfully, Ecto allows us to define our custom types that can represent an
+unknown database type. We’ll now try to implement one to represent timestamp
+ranges.</p>
+
+<hr />
+
+<p>Let’s say we need to schedule chores between different members of a team in a spaceship. <sup id="fnref:1" role="doc-noteref"><a href="#fn:1" class="footnote">1</a></sup></p>
+
+<p>The simplest way to do this would be to store the range of our chore and who is
+assigned to it. With Ecto, the migration creating this table would look like this:</p>
+
+<div class="language-elixir highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">create</span> <span class="n">table</span><span class="p">(</span><span class="ss">:chores</span><span class="p">)</span> <span class="k">do</span>
+  <span class="n">add</span><span class="p">(</span><span class="ss">:user_id</span><span class="p">,</span> <span class="n">references</span><span class="p">(</span><span class="s2">"users"</span><span class="p">),</span> <span class="ss">null:</span> <span class="no">false</span><span class="p">)</span>
+  <span class="n">add</span><span class="p">(</span><span class="ss">:note</span><span class="p">,</span> <span class="ss">:string</span><span class="p">)</span>
+  <span class="n">add</span><span class="p">(</span><span class="ss">:range</span><span class="p">,</span> <span class="ss">:tsrange</span><span class="p">,</span> <span class="ss">null:</span> <span class="no">false</span><span class="p">)</span>
+
+  <span class="n">timestamps</span><span class="p">(</span><span class="ss">default:</span> <span class="n">fragment</span><span class="p">(</span><span class="s2">"NOW()"</span><span class="p">))</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<p>We also need to make sure a user can’t have multiple chores overlapping with
+each other. For this we’ll add <a href="https://www.postgresql.org/docs/current/static/ddl-constraints.html#DDL-CONSTRAINTS-EXCLUSION" target="blank">an exclusion constraint</a> on our range:</p>
+
+<div class="language-elixir highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Add the btree_gist extension to allow using `gist` indexes</span>
+<span class="c1"># with scalar types, in our case the `user_id`.</span>
+<span class="n">execute</span><span class="p">(</span><span class="s2">"CREATE EXTENSION btree_gist"</span><span class="p">)</span>
+
+<span class="n">create</span><span class="p">(</span>
+  <span class="n">constraint</span><span class="p">(</span>
+    <span class="s2">"chores"</span><span class="p">,</span>
+    <span class="ss">:no_overlaping_chores_for_user</span><span class="p">,</span>
+    <span class="ss">exclude:</span> <span class="sx">~s|gist (user_id with =, range with &amp;&amp;)|</span>
+  <span class="p">)</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<h3 id="creating-the-schema">Creating the schema</h3>
+
+<p>We now create our schema representing a chore in the application. Let’s try to
+use the <code class="highlighter-rouge">:tsrange</code> as the type of our chore range:</p>
+
+<div class="language-elixir highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">defmodule</span> <span class="no">Chore</span> <span class="k">do</span>
+  <span class="kn">use</span> <span class="no">Ecto</span><span class="o">.</span><span class="no">Schema</span>
+
+  <span class="n">schema</span> <span class="s2">"chores"</span> <span class="k">do</span>
+    <span class="n">field</span><span class="p">(</span><span class="ss">:note</span><span class="p">,</span> <span class="ss">:string</span><span class="p">)</span>
+    <span class="n">field</span><span class="p">(</span><span class="ss">:range</span><span class="p">,</span> <span class="ss">:tsrange</span><span class="p">)</span>
+
+    <span class="n">belongs_to</span><span class="p">(</span><span class="ss">:user</span><span class="p">,</span> <span class="no">User</span><span class="p">)</span>
+
+    <span class="n">timestamps</span><span class="p">()</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="n">changeset</span><span class="p">(</span><span class="n">chore</span><span class="p">,</span> <span class="n">attrs</span><span class="p">)</span> <span class="k">do</span>
+    <span class="n">chore</span>
+    <span class="o">|&gt;</span> <span class="n">cast</span><span class="p">(</span><span class="n">attrs</span><span class="p">,</span> <span class="p">[</span><span class="ss">:user_id</span><span class="p">,</span> <span class="ss">:note</span><span class="p">,</span> <span class="ss">:range</span><span class="p">])</span>
+    <span class="o">|&gt;</span> <span class="n">validate_required</span><span class="p">([</span><span class="ss">:user_id</span><span class="p">,</span> <span class="ss">:range</span><span class="p">])</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<p>When compiling this, we have an error:</p>
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>== Compilation error in file lib/chore.ex ==
+** (ArgumentError) invalid or unknown type :tsrange
+    for field :range
+</code></pre></div></div>
+
+<p>Because <code class="highlighter-rouge">:tsrange</code> is not a type known by Ecto, we will need to create our own type
+adopting the <a href="https://hexdocs.pm/ecto/3.0.6/Ecto.Type.html" target="_blank"><code class="highlighter-rouge">Ecto.Type</code> behaviour</a>.
+But first we’ll create a struct that represents a timestamp range.</p>
+
+<h3 id="representing-our-range">Representing our Range</h3>
+
+<p>We define our <code class="highlighter-rouge">Timestamp.Range</code> as a struct with the first and last elements of the
+range and with options for the inclusivity of those elements in the range.</p>
+
+<!--
+We allow `nil` values to represent the lack of first and last elements: an
+infinite range.
+-->
+
+<div class="language-elixir highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">defmodule</span> <span class="no">Timestamp</span><span class="o">.</span><span class="no">Range</span> <span class="k">do</span>
+  <span class="k">defstruct</span> <span class="p">[</span><span class="ss">:first</span><span class="p">,</span> <span class="ss">:last</span><span class="p">,</span> <span class="ss">opts:</span> <span class="p">[]]</span>
+
+  <span class="nv">@type</span> <span class="n">t</span> <span class="p">::</span> <span class="p">%</span><span class="bp">__MODULE__</span><span class="p">{</span>
+          <span class="ss">first:</span> <span class="no">NaiveDateTime</span><span class="o">.</span><span class="n">t</span><span class="p">(),</span>
+          <span class="ss">last:</span> <span class="no">NaiveDateTime</span><span class="o">.</span><span class="n">t</span><span class="p">(),</span>
+          <span class="ss">opts:</span> <span class="p">[</span>
+            <span class="ss">lower_inclusive:</span> <span class="n">boolean</span><span class="p">(),</span>
+            <span class="ss">upper_inclusive:</span> <span class="n">boolean</span><span class="p">()</span>
+          <span class="p">]</span>
+        <span class="p">}</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<p>We also define a convenience function to create a <code class="highlighter-rouge">Timestamp.Range</code>:</p>
+
+<div class="language-elixir highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+<span class="nv">@default_opts</span> <span class="p">[</span><span class="ss">lower_inclusive:</span> <span class="no">true</span><span class="p">,</span> <span class="ss">upper_inclusive:</span> <span class="no">false</span><span class="p">]</span>
+
+<span class="nv">@spec</span> <span class="n">new</span><span class="p">(</span><span class="no">NaiveDateTime</span><span class="o">.</span><span class="n">t</span><span class="p">(),</span> <span class="no">NaiveDateTime</span><span class="o">.</span><span class="n">t</span><span class="p">(),</span> <span class="no">Keyword</span><span class="o">.</span><span class="n">t</span><span class="p">())</span> <span class="p">::</span> <span class="n">t</span>
+<span class="k">def</span> <span class="n">new</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">last</span><span class="p">,</span> <span class="n">opts</span> <span class="p">\\</span> <span class="p">[])</span> <span class="k">do</span>
+    <span class="n">opts</span> <span class="o">=</span> <span class="no">Keyword</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="nv">@default_opts</span><span class="p">,</span> <span class="n">opts</span><span class="p">)</span>
+
+    <span class="p">%</span><span class="bp">__MODULE__</span><span class="p">{</span>
+      <span class="ss">first:</span> <span class="n">first</span><span class="p">,</span>
+      <span class="ss">last:</span> <span class="n">last</span><span class="p">,</span>
+      <span class="ss">opts:</span> <span class="n">opts</span>
+    <span class="p">}</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<p>We can now represent a Postgres’s <code class="highlighter-rouge">tsrange</code> in Elixir.</p>
+
+<h3 id="implementing-the-ectotype-behaviour">Implementing the <code class="highlighter-rouge">Ecto.Type</code> behaviour</h3>
+<p>The <code class="highlighter-rouge">Ecto.Type</code> behaviour expects four functions to be defined:</p>
+<ul>
+  <li><code class="highlighter-rouge">type/0</code>: The underlying type of our custom type, known by either Ecto or
+  <a href="https://github.com/elixir-ecto/postgrex" target="_blank">Postgrex</a></li>
+  <li><code class="highlighter-rouge">cast/1</code>: A function to transform anything into our custom type.</li>
+  <li><code class="highlighter-rouge">load/1</code>: A function to transform something from the database into our custom
+  type.</li>
+  <li><code class="highlighter-rouge">dump/1</code>: A function to transform our custom type into something understood by
+  the database.</li>
+</ul>
+
+<p>The <code class="highlighter-rouge">type</code> implementation:</p>
+<div class="language-elixir highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="n">type</span><span class="p">,</span> <span class="k">do</span><span class="p">:</span> <span class="ss">:tsrange</span>
+</code></pre></div></div>
+
+<p>The <code class="highlighter-rouge">cast</code> implementation: we only allow our custom type
+to be cast:</p>
+<div class="language-elixir highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="n">cast</span><span class="p">(%</span><span class="no">Timestamp</span><span class="o">.</span><span class="no">Range</span><span class="p">{}</span> <span class="o">=</span> <span class="n">range</span><span class="p">),</span> <span class="k">do</span><span class="p">:</span> <span class="p">{</span><span class="ss">:ok</span><span class="p">,</span> <span class="n">range</span><span class="p">}</span>
+<span class="k">def</span> <span class="n">cast</span><span class="p">(</span><span class="n">_</span><span class="p">),</span> <span class="k">do</span><span class="p">:</span> <span class="ss">:error</span>
+</code></pre></div></div>
+
+<p>The <code class="highlighter-rouge">load</code> implementation receives a <code class="highlighter-rouge">Postgrex.Range</code> and transforms it to a
+<code class="highlighter-rouge">Timestamp.Range</code>:</p>
+
+<div class="language-elixir highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="n">load</span><span class="p">(%</span><span class="no">Postgrex</span><span class="o">.</span><span class="no">Range</span><span class="p">{}</span> <span class="o">=</span> <span class="n">range</span><span class="p">)</span> <span class="k">do</span>
+  <span class="p">{</span><span class="ss">:ok</span><span class="p">,</span>
+    <span class="no">Timestamp</span><span class="o">.</span><span class="no">Range</span><span class="o">.</span><span class="n">new</span><span class="p">(</span>
+      <span class="n">range</span><span class="o">.</span><span class="n">lower</span><span class="p">,</span>
+      <span class="n">range</span><span class="o">.</span><span class="n">upper</span><span class="p">,</span>
+      <span class="ss">lower_inclusive:</span> <span class="n">range</span><span class="o">.</span><span class="n">lower_inclusive</span><span class="p">,</span>
+      <span class="ss">upper_inclusive:</span> <span class="n">range</span><span class="o">.</span><span class="n">upper_inclusive</span>
+    <span class="p">)}</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="n">load</span><span class="p">(</span><span class="n">_</span><span class="p">),</span> <span class="k">do</span><span class="p">:</span> <span class="ss">:error</span>
+</code></pre></div></div>
+
+<p>And finally, the <code class="highlighter-rouge">dump</code> implementation takes a <code class="highlighter-rouge">Timestamp.Range</code> and transforms
+it to a <code class="highlighter-rouge">Postgrex.Range</code>:</p>
+<div class="language-elixir highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="n">dump</span><span class="p">(%</span><span class="no">Timestamp</span><span class="o">.</span><span class="no">Range</span><span class="p">{}</span> <span class="o">=</span> <span class="n">range</span><span class="p">)</span> <span class="k">do</span>
+  <span class="p">[</span><span class="ss">lower_inclusive:</span> <span class="n">lower_inclusive</span><span class="p">,</span> <span class="ss">upper_inclusive:</span> <span class="n">upper_inclusive</span><span class="p">]</span> <span class="o">=</span> <span class="n">range</span><span class="o">.</span><span class="n">opts</span>
+
+  <span class="p">{</span><span class="ss">:ok</span><span class="p">,</span>
+    <span class="p">%</span><span class="no">Postgrex</span><span class="o">.</span><span class="no">Range</span><span class="p">{</span>
+      <span class="ss">lower:</span> <span class="n">range</span><span class="o">.</span><span class="n">first</span><span class="p">,</span>
+      <span class="ss">upper:</span> <span class="n">range</span><span class="o">.</span><span class="n">last</span><span class="p">,</span>
+      <span class="ss">lower_inclusive:</span> <span class="n">lower_inclusive</span><span class="p">,</span>
+      <span class="ss">upper_inclusive:</span> <span class="n">upper_inclusive</span>
+    <span class="p">}}</span>
+<span class="k">end</span>
+
+<span class="k">def</span> <span class="n">dump</span><span class="p">(</span><span class="n">_</span><span class="p">),</span> <span class="k">do</span><span class="p">:</span> <span class="ss">:error</span>
+</code></pre></div></div>
+
+<h3 id="using-our-new-type-in-the-schema">Using our new type in the schema</h3>
+
+<p>Now that we have our custom Ecto type, we can use it in our schema:</p>
+
+<div class="language-elixir highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">schema</span> <span class="s2">"chores"</span> <span class="k">do</span>
+  <span class="n">field</span><span class="p">(</span><span class="ss">:note</span><span class="p">,</span> <span class="ss">:string</span><span class="p">)</span>
+  <span class="n">field</span><span class="p">(</span><span class="ss">:range</span><span class="p">,</span> <span class="no">Timestamp</span><span class="o">.</span><span class="no">Range</span><span class="p">)</span>
+
+  <span class="n">belongs_to</span><span class="p">(</span><span class="ss">:user</span><span class="p">,</span> <span class="no">User</span><span class="p">)</span>
+
+  <span class="n">timestamps</span><span class="p">()</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<p>And we can insert new chores into the table:</p>
+
+<div class="language-elixir highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">iex</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">range_start</span> <span class="o">=</span> <span class="sx">~N[2018-09-17 10:00:00]</span>
+<span class="n">iex</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">range_end</span> <span class="o">=</span> <span class="sx">~N[2018-09-17 12:00:00]</span>
+<span class="n">iex</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">&gt;</span> <span class="n">attrs</span> <span class="o">=</span> <span class="p">%{</span><span class="ss">user_id:</span> <span class="mi">1</span><span class="p">,</span> <span class="ss">range:</span> <span class="no">Timestamp</span><span class="o">.</span><span class="no">Range</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="n">range_start</span><span class="p">,</span> <span class="n">range_end</span><span class="p">)}</span>
+<span class="n">iex</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span><span class="o">&gt;</span> <span class="no">Chore</span><span class="o">.</span><span class="n">changeset</span><span class="p">(%</span><span class="no">Chore</span><span class="p">{},</span> <span class="n">attrs</span><span class="p">)</span> <span class="o">|&gt;</span> <span class="no">Repo</span><span class="o">.</span><span class="n">insert!</span>
+<span class="p">%</span><span class="no">Radch</span><span class="o">.</span><span class="no">Chore</span><span class="p">{</span>
+  <span class="ss">__meta__:</span> <span class="c1">#Ecto.Schema.Metadata&lt;:loaded, "chores"&gt;,</span>
+  <span class="ss">id:</span> <span class="mi">1</span><span class="p">,</span>
+  <span class="ss">note:</span> <span class="no">nil</span><span class="p">,</span>
+  <span class="ss">range:</span> <span class="c1">#Timestamp.Range&lt;~N[2018-09-17 10:00:00], ~N[2018-09-17 12:00:00]&gt;,</span>
+  <span class="ss">user_id:</span> <span class="mi">1</span>
+  <span class="ss">updated_at:</span> <span class="sx">~N[2018-09-17 16:30:05]</span><span class="p">,</span>
+  <span class="ss">inserted_at:</span> <span class="sx">~N[2018-09-17 16:30:05]</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><small>The code examples in this post are also available <a href="https://github.com/aliou/radch" target="blank">on GitHub</a>.
+Thanks to <a href="https://twitter.com/caouibachir" target="_blank">Bachir Çaoui</a> for reviewing a
+draft version of this post.</small></p>
+
+<hr />
+
+<h4 id="further-reading">Further reading</h4>
+<ul>
+  <li>Documentation on the <a href="https://hexdocs.pm/ecto/3.0.0/Ecto.Type.html" target="_blank"><code class="highlighter-rouge">Ecto.Type</code> behaviour</a></li>
+  <li>Documentation on <a href="https://www.postgresql.org/docs/10/static/rangetypes.html" target="_blank">Postgres’ range types</a></li>
+  <li>More reading on <a href="https://tapoueh.org/blog/2018/04/postgresql-data-types-ranges" target="_blank">Postgres’ range types</a></li>
+</ul>
+
+<div class="footnotes" role="doc-endnotes">
+  <ol>
+    <li id="fn:1" role="doc-endnote">
+      <p>If you know me this <a href="https://www.snapshift.co" target="_blank">might be familiar</a>. <a href="#fnref:1" class="reversefootnote" role="doc-backlink">&#8617;</a></p>
+    </li>
+  </ol>
+</div>
+</p>
+</article>
+
+    </main>
+  </body>
+  <script src="/assets/app.js" type="text/javascript"></script>
+</html>

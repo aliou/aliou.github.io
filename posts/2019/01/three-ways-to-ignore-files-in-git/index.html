@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    
+  <title>Three ways to ignore files in Git &mdash; Aliou Diallo</title>
+  <meta name='og:title' content="Three ways to ignore files in Git - Aliou Diallo" />
+
+
+<meta name='twitter:site' content='@aliouftw' />
+<meta name='twitter:title' content='Aliou Diallo' />
+
+
+  <meta name='twitter:title' content="Three ways to ignore files in Git &mdash; Aliou Diallo" />
+
+
+
+  <meta name='description' content="There are different ways to ignore files in a Git repository, each with their own uses.
+" />
+  <meta name='og:description' content="There are different ways to ignore files in a Git repository, each with their own uses.
+" />
+  <meta name='twitter:description' content="There are different ways to ignore files in a Git repository, each with their own uses.
+" />
+
+
+
+  <meta property="twitter:card" content="summary_large_image">
+
+
+
+    <meta charset="UTF-8">
+    <meta name="google-site-verification" content="QnLybeTUEt_VtHQVLLtEz0WflVe-H7TNqCOTlF-tfz8" />
+    <meta name='author' content='Aliou Diallo' />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <link href="/posts/2019/01/three-ways-to-ignore-files-in-git/" rel="canonical" />
+
+    <link rel="stylesheet" type="text/css" href="/assets/styles.css">
+    <link rel="stylesheet" type="text/css" href="/assets/base16-default.dark.css">
+    <link rel="stylesheet" type="text/css" href="/assets/base16-default.light.css">
+  </head>
+  <body class='container'>
+    <header>
+  <h1 class="header-title">
+    <a class='header-link not-underlined' href="/">Aliou Diallo</a>
+  </h1>
+  <nav class="header-nav">
+    <a class='not-underlined header-link' href="/posts">Posts</a>
+    <a class='not-underlined header-link' href="https://twitter.com/aliouftw" target='_blank'>Twitter</a>
+    <a class='not-underlined header-link' href="https://github.com/aliou" target='_blank'>GitHub</a>
+    <a class='not-underlined header-link' href="https://hachyderm.io/@aliouftw" rel="me">Mastodon</a>
+  </nav>
+</header>
+
+    <main class='content'>
+      <article class='post-container'>
+  <h1 class='archive-post-title'>
+    <a class='header-link not-underlined' href='/posts/2019/01/three-ways-to-ignore-files-in-git/'>
+      Three ways to ignore files in Git
+    </a>
+  </h1>
+  <time class="f6 tracked gray">January 17, 2019</time>
+  
+
+  <p class="f4 lh-title"><p>TIL I learned that there are different ways to ignore files in Git:</p>
+
+<h3 id="1-using-a-gitignore-file-in-a-repository">1. Using a <code class="highlighter-rouge">.gitignore</code> file in a repository</h3>
+<p>When created in a Git repository, this <code class="highlighter-rouge">.gitignore</code> is only applied to the
+directory it is in and its children. This means that you can ignore files in the
+whole repository and also ignore some files in some subdirectories.</p>
+
+<p>Start by creating a <code class="highlighter-rouge">.gitignore</code> in a subdirectory:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># lib/.gitignore</span>
+<span class="k">*</span>.md
+</code></pre></div></div>
+
+<p>With the following directory structure:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">.</span>
+├── lib
+│   ├── .gitignore
+│   ├── todo.md        <span class="c"># &lt;- Will be ignored</span>
+└── Readme.md          <span class="c"># &lt;- Will not be ignored</span>
+</code></pre></div></div>
+
+<p>This file should be version-controlled and includes files that all developers working on the repository will want to ignore.</p>
+
+<h3 id="2-using-the-local-exclusion-file-gitinfoexclude">2. Using the local exclusion file <code class="highlighter-rouge">.git/info/exclude</code></h3>
+
+<p>Start by creating the <code class="highlighter-rouge">info</code> directory and the exclude file in our repository
+<code class="highlighter-rouge">.git</code> directory:</p>
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">mkdir</span> <span class="nt">-p</span> .git/info
+<span class="nb">touch </span>exclude
+</code></pre></div></div>
+
+<p>Then you can add files or pattern of files you want to ignore:</p>
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>TODO.md
+NOTES.txt
+</code></pre></div></div>
+
+<p>I mainly use it to ignore files that do not need to be shared with other developers.
+I usually leave notes a list of TODOs at the root of a project and ignore them in this file.</p>
+
+<h3 id="3-using-a-global-gitignore">3. Using a global <code class="highlighter-rouge">.gitignore</code></h3>
+
+<p>Start by making a <code class="highlighter-rouge">.gitignore</code> file in your home directory,
+with the files you want to ignore, and place in your home directory:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># ~/.gitignore</span>
+
+.vimrc.local
+<span class="k">*</span>.swp
+
+.idea
+.DS_Store
+</code></pre></div></div>
+
+<p>Then, tell Git to use this file as global <code class="highlighter-rouge">.gitignore</code> by running in your shell:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git config <span class="nt">--global</span> core.excludesfile ~/.gitignore
+</code></pre></div></div>
+
+<p>I use it to ignore file I never want to be committed, e.g. backup or temporary
+files, build  artifacts, etc.</p>
+
+<hr />
+
+<h4 id="further-reading">Further reading</h4>
+<ul>
+  <li>Documentation for <a href="https://git-scm.com/docs/gitignore" target="_blank"><code class="highlighter-rouge">gitignore</code></a>.</li>
+</ul>
+</p>
+</article>
+
+    </main>
+  </body>
+  <script src="/assets/app.js" type="text/javascript"></script>
+</html>

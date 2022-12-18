@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    
+  <title>Namespaced Rails validators &mdash; Aliou Diallo</title>
+  <meta name='og:title' content="Namespaced Rails validators - Aliou Diallo" />
+
+
+<meta name='twitter:site' content='@aliouftw' />
+<meta name='twitter:title' content='Aliou Diallo' />
+
+
+  <meta name='twitter:title' content="Namespaced Rails validators &mdash; Aliou Diallo" />
+
+
+
+  <meta name='description' content="How to namespace custom Rails validators" />
+  <meta name='og:description' content="How to namespace custom Rails validators" />
+  <meta name='twitter:description' content="How to namespace custom Rails validators" />
+
+
+
+  <meta property="twitter:card" content="summary_large_image">
+
+
+
+    <meta charset="UTF-8">
+    <meta name="google-site-verification" content="QnLybeTUEt_VtHQVLLtEz0WflVe-H7TNqCOTlF-tfz8" />
+    <meta name='author' content='Aliou Diallo' />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <link href="/posts/2018/08/namespaced-rails-validators/" rel="canonical" />
+
+    <link rel="stylesheet" type="text/css" href="/assets/styles.css">
+    <link rel="stylesheet" type="text/css" href="/assets/base16-default.dark.css">
+    <link rel="stylesheet" type="text/css" href="/assets/base16-default.light.css">
+  </head>
+  <body class='container'>
+    <header>
+  <h1 class="header-title">
+    <a class='header-link not-underlined' href="/">Aliou Diallo</a>
+  </h1>
+  <nav class="header-nav">
+    <a class='not-underlined header-link' href="/posts">Posts</a>
+    <a class='not-underlined header-link' href="https://twitter.com/aliouftw" target='_blank'>Twitter</a>
+    <a class='not-underlined header-link' href="https://github.com/aliou" target='_blank'>GitHub</a>
+    <a class='not-underlined header-link' href="https://hachyderm.io/@aliouftw" rel="me">Mastodon</a>
+  </nav>
+</header>
+
+    <main class='content'>
+      <article class='post-container'>
+  <h1 class='archive-post-title'>
+    <a class='header-link not-underlined' href='/posts/2018/08/namespaced-rails-validators/'>
+      Namespaced Rails validators
+    </a>
+  </h1>
+  <time class="f6 tracked gray">August 27, 2018</time>
+  
+
+  <p class="f4 lh-title"><p>While going source spelunking, I came across this piece of code in Rails’
+ActiveModel:</p>
+
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">key</span> <span class="o">=</span> <span class="s2">"</span><span class="si">#{</span><span class="n">key</span><span class="p">.</span><span class="nf">to_s</span><span class="p">.</span><span class="nf">camelize</span><span class="si">}</span><span class="s2">Validator"</span>
+
+<span class="k">begin</span>
+  <span class="n">validator</span> <span class="o">=</span> <span class="n">key</span><span class="p">.</span><span class="nf">include?</span><span class="p">(</span><span class="s2">"::"</span><span class="p">.</span><span class="nf">freeze</span><span class="p">)</span> <span class="p">?</span> <span class="n">key</span><span class="p">.</span><span class="nf">constantize</span> <span class="p">:</span> <span class="nb">const_get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+<span class="k">rescue</span> <span class="no">NameError</span>
+  <span class="k">raise</span> <span class="no">ArgumentError</span><span class="p">,</span> <span class="s2">"Unknown validator: '</span><span class="si">#{</span><span class="n">key</span><span class="si">}</span><span class="s2">'"</span>
+<span class="k">end</span>
+</code></pre></div></div>
+<p class="ma0"><small><a href="https://github.com/rails/rails/blob/5-2-stable/activemodel/lib/active_model/validations/validates.rb#L116-L122" target="_blank"><code class="highlighter-rouge">active_model/validations/validates.rb</code></a></small></p>
+
+<p>This means that you can namespace your custom validators:</p>
+
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># lib/internal/email_validator.rb</span>
+<span class="k">module</span> <span class="nn">Internal</span>
+  <span class="k">class</span> <span class="nc">EmailValidator</span>
+    <span class="k">def</span> <span class="nf">validate_each</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">attribute</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+      <span class="k">return</span> <span class="k">if</span> <span class="n">value</span><span class="p">.</span><span class="nf">ends_with?</span><span class="p">(</span><span class="s1">'@private_domain.com'</span><span class="p">)</span>
+
+      <span class="n">record</span><span class="p">.</span><span class="nf">errors</span><span class="p">.</span><span class="nf">add</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="s1">'not from private domain'</span><span class="p">)</span>
+    <span class="k">end</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<p>And then use them like this:</p>
+
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># app/models/admin.rb</span>
+<span class="k">class</span> <span class="nc">Admin</span> <span class="o">&lt;</span> <span class="no">ApplicationRecord</span>
+  <span class="n">validates</span> <span class="ss">:email</span><span class="p">,</span> <span class="s1">'internal/email'</span><span class="p">:</span> <span class="kp">true</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<p><small>Thanks to <a href="https://twitter.com/caouibachir" target="_blank">Bachir Çaoui</a> for reviewing a
+draft version of this post.</small></p>
+</p>
+</article>
+
+    </main>
+  </body>
+  <script src="/assets/app.js" type="text/javascript"></script>
+</html>

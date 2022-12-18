@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    
+  <title>Using Rails's Attributes API to serialize Value Objects &mdash; Aliou Diallo</title>
+  <meta name='og:title' content="Using Rails's Attributes API to serialize Value Objects - Aliou Diallo" />
+
+
+<meta name='twitter:site' content='@aliouftw' />
+<meta name='twitter:title' content='Aliou Diallo' />
+
+
+  <meta name='twitter:title' content="Using Rails's Attributes API to serialize Value Objects &mdash; Aliou Diallo" />
+
+
+
+  <meta name='description' content="How the Rails's Attributes API allows you to use value object in association with your models." />
+  <meta name='og:description' content="How the Rails's Attributes API allows you to use value object in association with your models." />
+  <meta name='twitter:description' content="How the Rails's Attributes API allows you to use value object in association with your models." />
+
+
+
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property='twitter:image' content='https://img.aliou.me/blog/spacex-falcon-9-rocket.jpg' />
+  <meta property="og:image" content='https://img.aliou.me/blog/spacex-falcon-9-rocket.jpg' />
+
+
+
+    <meta charset="UTF-8">
+    <meta name="google-site-verification" content="QnLybeTUEt_VtHQVLLtEz0WflVe-H7TNqCOTlF-tfz8" />
+    <meta name='author' content='Aliou Diallo' />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <link href="/posts/2019/10/attributes-api-and-value-objects/" rel="canonical" />
+
+    <link rel="stylesheet" type="text/css" href="/assets/styles.css">
+    <link rel="stylesheet" type="text/css" href="/assets/base16-default.dark.css">
+    <link rel="stylesheet" type="text/css" href="/assets/base16-default.light.css">
+  </head>
+  <body class='container'>
+    <header>
+  <h1 class="header-title">
+    <a class='header-link not-underlined' href="/">Aliou Diallo</a>
+  </h1>
+  <nav class="header-nav">
+    <a class='not-underlined header-link' href="/posts">Posts</a>
+    <a class='not-underlined header-link' href="https://twitter.com/aliouftw" target='_blank'>Twitter</a>
+    <a class='not-underlined header-link' href="https://github.com/aliou" target='_blank'>GitHub</a>
+    <a class='not-underlined header-link' href="https://hachyderm.io/@aliouftw" rel="me">Mastodon</a>
+  </nav>
+</header>
+
+    <main class='content'>
+      <article class='post-container'>
+  <h1 class='archive-post-title'>
+    <a class='header-link not-underlined' href='/posts/2019/10/attributes-api-and-value-objects/'>
+      Using Rails's Attributes API to serialize Value Objects
+    </a>
+  </h1>
+  <time class="f6 tracked gray">October 8, 2019</time>
+  
+
+  <p class="f4 lh-title"><p>Continuing my deep dive into Rails features <sup id="fnref:1" role="doc-noteref"><a href="#fn:1" class="footnote">1</a></sup>, I recently read about the <a href="https://api.rubyonrails.org/classes/ActiveRecord/Attributes/ClassMethods.html" target="_blank">Attributes API</a> and
+more particularly about how it can be used with custom types.</p>
+
+<h3 id="the-attribute-api">The <code class="highlighter-rouge">attribute</code> API</h3>
+
+<p>The <code class="highlighter-rouge">attributes</code> method allows you to define an attribute with a type on a model. This type can be a completely custom.</p>
+
+<p>In our example, we have spaceships that are defined by their category. Those categories are both immutable and interchangeable, and are good candidates to be transformed into <a href="https://www.martinfowler.com/bliki/ValueObject.html" target="_blank">value objects</a>.</p>
+
+<p>Our current model looks like this:</p>
+
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># app/models/ship.rb</span>
+<span class="k">class</span> <span class="nc">Ship</span> <span class="o">&lt;</span> <span class="no">ApplicationRecord</span>
+  <span class="n">validates</span> <span class="ss">:name</span><span class="p">,</span> <span class="ss">presence: </span><span class="kp">true</span>
+  <span class="n">validates</span> <span class="ss">:category</span><span class="p">,</span> <span class="ss">presence: </span><span class="kp">true</span>
+
+  <span class="n">validates</span> <span class="ss">:category</span><span class="p">,</span> <span class="ss">inclusion: </span><span class="p">{</span> <span class="ss">in: </span><span class="no">Ship</span><span class="o">::</span><span class="no">Category</span><span class="o">::</span><span class="no">VALID_CATEGORIES</span> <span class="p">}</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<p>And our <code class="highlighter-rouge">Ship::Category</code> value type looks like this:</p>
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># app/models/ship/category.rb</span>
+<span class="k">class</span> <span class="nc">Ship</span><span class="o">::</span><span class="no">Category</span>
+  <span class="no">VALID_CATEGORIES</span> <span class="o">=</span> <span class="sx">%w(
+    shuttle supply_carrier troop_carrier war_ship
+  )</span><span class="p">.</span><span class="nf">freeze</span>
+
+  <span class="k">def</span> <span class="nf">initialize</span><span class="p">(</span><span class="n">category</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="s2">"invalid category '</span><span class="si">#{</span><span class="n">category</span><span class="p">.</span><span class="nf">inspect</span><span class="si">}</span><span class="s2">'"</span> <span class="k">unless</span> <span class="n">category</span><span class="p">.</span><span class="nf">in?</span><span class="p">(</span><span class="no">VALID_CATEGORIES</span><span class="p">)</span>
+
+    <span class="vi">@raw_category</span> <span class="o">=</span> <span class="n">category</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">to_s</span>
+    <span class="n">raw_category</span>
+  <span class="k">end</span>
+
+  <span class="c1"># Conform to comparable.</span>
+  <span class="k">def</span> <span class="nf">&lt;</span><span class="o">=&gt;</span><span class="p">(</span><span class="n">other</span><span class="p">)</span>
+    <span class="no">VALID_CATEGORIES</span><span class="p">.</span><span class="nf">index</span><span class="p">(</span><span class="nb">to_s</span><span class="p">)</span> <span class="o">&lt;=&gt;</span> <span class="no">VALID_CATEGORIES</span><span class="p">.</span><span class="nf">index</span><span class="p">(</span><span class="n">other</span><span class="p">.</span><span class="nf">to_s</span><span class="p">)</span>
+  <span class="k">end</span>
+
+  <span class="kp">private</span>
+
+  <span class="nb">attr_reader</span> <span class="ss">:raw_category</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<p>Now, let’s update our model to retrieve our value object:</p>
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># app/models/ship.rb</span>
+<span class="k">class</span> <span class="nc">Ship</span> <span class="o">&lt;</span> <span class="no">ApplicationRecord</span>
+  <span class="c1"># ...</span>
+
+  <span class="k">def</span> <span class="nf">category</span>
+    <span class="vi">@category</span> <span class="o">||=</span> <span class="no">Ship</span><span class="o">::</span><span class="no">Category</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="nb">self</span><span class="p">[</span><span class="ss">:category</span><span class="p">])</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<p>While this does what we want, this can be improved by creating a custom type.</p>
+
+<h3 id="creating-a-custom-type">Creating a custom type</h3>
+<p>We create our custom type by inheriting from <code class="highlighter-rouge">ActiveRecord::Type::Value</code> and overriding the necessary methods:</p>
+<ul>
+  <li><code class="highlighter-rouge">type</code> is the type of our object when saved in the database. In our case this will be <code class="highlighter-rouge">:string</code>.</li>
+  <li><code class="highlighter-rouge">cast</code> is the method called by ActiveRecord when setting the attribute in the model.
+In our case, we will instantiate our value object.</li>
+  <li><code class="highlighter-rouge">deserialize</code> converts the value from the database to our value object. By default it calls <code class="highlighter-rouge">cast</code>.</li>
+  <li><code class="highlighter-rouge">serialize</code> converts our value object to a type that the database understands. In our case, we’ll send back the string containing the raw category.</li>
+</ul>
+
+<p>For our type it looks like this:</p>
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># app/types/ship_category.rb</span>
+
+<span class="k">class</span> <span class="nc">CategoryType</span> <span class="o">&lt;</span> <span class="no">ActiveRecord</span><span class="o">::</span><span class="no">Type</span><span class="o">::</span><span class="no">Value</span>
+  <span class="k">def</span> <span class="nf">type</span>
+    <span class="ss">:string</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">cast</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="no">Ship</span><span class="o">::</span><span class="no">Category</span><span class="p">.</span><span class="nf">new</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">deserialize</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="n">cast</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">serialize</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="n">value</span><span class="p">.</span><span class="nf">to_s</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<h3 id="registering-our-type">Registering our type</h3>
+
+<p>Now that our type is created, we need to register it so ActiveRecord knows about it:</p>
+
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># config/initializers/types.rb</span>
+<span class="no">ActiveRecord</span><span class="o">::</span><span class="no">Type</span><span class="p">.</span><span class="nf">register</span><span class="p">(</span><span class="ss">:ship_category</span><span class="p">,</span> <span class="no">CategoryType</span><span class="p">)</span>
+</code></pre></div></div>
+<p><small class="ma0">You will need to restart your Rails server or re-register your type every time you update it.</small></p>
+
+<h3 id="using-it-in-our-model">Using it in our model</h3>
+<p>Finally, we can use it in our model:</p>
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Ship</span> <span class="o">&lt;</span> <span class="no">ApplicationRecord</span>
+  <span class="n">attribute</span> <span class="ss">:category</span><span class="p">,</span> <span class="ss">:ship_category</span>
+
+  <span class="n">validates</span> <span class="ss">:name</span><span class="p">,</span> <span class="ss">presence: </span><span class="kp">true</span>
+  <span class="n">validates</span> <span class="ss">:category</span><span class="p">,</span> <span class="ss">presence: </span><span class="kp">true</span>
+<span class="k">end</span>
+</code></pre></div></div>
+
+<hr />
+
+<p>At this point, you might be wondering: <em>Why would I do this?</em>
+Personally, I feel like it is <em>cleaner</em> to let Rails handle the instantiation of objects instead of the usual memoization-with-instance-variables dance.</p>
+
+<p>Furthermore, it allows you to add additional features to your model without having pollute the model class. In our case, we allow our ships to be compared based on their categories by implementing <a href="https://ruby-doc.org/core/Comparable.html" target="_blank">Comparable</a> in our Category.</p>
+
+<p>However, there are ways to make this particular use case fall down. In our example above, we limit the category to the values defined in <code class="highlighter-rouge">VALID_CATEGORIES</code>. This means that creating a row in our database with a value that isn’t valid will make our application raise when trying to instantiate the row into a <code class="highlighter-rouge">Ship</code> object:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">ships</span><span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">category</span><span class="p">,</span> <span class="n">created_at</span><span class="p">,</span> <span class="n">updated_at</span><span class="p">)</span>
+<span class="k">VALUES</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="s1">'USS Enterprise'</span><span class="p">,</span> <span class="s1">'interstellar_liner'</span><span class="p">,</span> <span class="n">NOW</span><span class="p">(),</span> <span class="n">NOW</span><span class="p">());</span>
+</code></pre></div></div>
+
+<div class="language-ruby highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">enterprise</span> <span class="o">=</span> <span class="no">Ship</span><span class="p">.</span><span class="nf">find</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="c1"># =&gt; Error: invalid category 'interstellar_liner'</span>
+</code></pre></div></div>
+
+<hr />
+
+<p>For the purpose of this blog post, I chose a fairly simple example to present the attributes API.
+To achieve a similar result, you could also define the categories as a ActiveRecord Enum, as a Postgres Enum<sup id="fnref:2" role="doc-noteref"><a href="#fn:2" class="footnote">2</a></sup> or even have them in their own table and have a Postgres association between a Ship and its category, that is backed by a foreign key to achieve integrity of your data.</p>
+
+<p><small>Thanks to <a href="https://twitter.com/caouibachir" target="_blank">Bachir Çaoui</a> and Baicheng Yu for reviewing draft versions of this post.</small></p>
+
+<hr />
+
+<h4 id="further-reading">Further reading</h4>
+<ul>
+  <li>Martin Fowler’s <a href="https://www.martinfowler.com/bliki/ValueObject.html" target="_blank">post on Value Objects</a>.</li>
+  <li>A <a href="https://jetrockets.pro/blog/rails-5-attributes-api-value-objects-and-jsonb" target="_blank">post on using the Attributes API with JSONB</a>.</li>
+</ul>
+
+<div class="footnotes" role="doc-endnotes">
+  <ol>
+    <li id="fn:1" role="doc-endnote">
+      <p>See my previous post about <a href="/posts/2018/08/namespaced-rails-validators/">Namespaced Rails validators</a>. <a href="#fnref:1" class="reversefootnote" role="doc-backlink">&#8617;</a></p>
+    </li>
+    <li id="fn:2" role="doc-endnote">
+      <p>However, this would require you to change your schema format to <code class="highlighter-rouge">:sql</code> or to override Rails’s Schema dumper to handle Postgres Enums (But more on that in a future post). <a href="#fnref:2" class="reversefootnote" role="doc-backlink">&#8617;</a></p>
+    </li>
+  </ol>
+</div>
+</p>
+</article>
+
+    </main>
+  </body>
+  <script src="/assets/app.js" type="text/javascript"></script>
+</html>

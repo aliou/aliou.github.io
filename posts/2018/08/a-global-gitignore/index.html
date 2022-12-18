@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    
+  <title>A global .gitignore &mdash; Aliou Diallo</title>
+  <meta name='og:title' content="A global .gitignore - Aliou Diallo" />
+
+
+<meta name='twitter:site' content='@aliouftw' />
+<meta name='twitter:title' content='Aliou Diallo' />
+
+
+  <meta name='twitter:title' content="A global .gitignore &mdash; Aliou Diallo" />
+
+
+
+  <meta name='description' content="How to have a global gitignore that applies to all repos" />
+  <meta name='og:description' content="How to have a global gitignore that applies to all repos" />
+  <meta name='twitter:description' content="How to have a global gitignore that applies to all repos" />
+
+
+
+  <meta property="twitter:card" content="summary_large_image">
+
+
+
+    <meta charset="UTF-8">
+    <meta name="google-site-verification" content="QnLybeTUEt_VtHQVLLtEz0WflVe-H7TNqCOTlF-tfz8" />
+    <meta name='author' content='Aliou Diallo' />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <link href="/posts/2018/08/a-global-gitignore/" rel="canonical" />
+
+    <link rel="stylesheet" type="text/css" href="/assets/styles.css">
+    <link rel="stylesheet" type="text/css" href="/assets/base16-default.dark.css">
+    <link rel="stylesheet" type="text/css" href="/assets/base16-default.light.css">
+  </head>
+  <body class='container'>
+    <header>
+  <h1 class="header-title">
+    <a class='header-link not-underlined' href="/">Aliou Diallo</a>
+  </h1>
+  <nav class="header-nav">
+    <a class='not-underlined header-link' href="/posts">Posts</a>
+    <a class='not-underlined header-link' href="https://twitter.com/aliouftw" target='_blank'>Twitter</a>
+    <a class='not-underlined header-link' href="https://github.com/aliou" target='_blank'>GitHub</a>
+    <a class='not-underlined header-link' href="https://hachyderm.io/@aliouftw" rel="me">Mastodon</a>
+  </nav>
+</header>
+
+    <main class='content'>
+      <article class='post-container'>
+  <h1 class='archive-post-title'>
+    <a class='header-link not-underlined' href='/posts/2018/08/a-global-gitignore/'>
+      A global .gitignore
+    </a>
+  </h1>
+  <time class="f6 tracked gray">August 26, 2018</time>
+  
+
+  <p class="f4 lh-title"><p>A small tip that I’ve come across recently: It is possible to have a global <code class="highlighter-rouge">.gitignore</code> file
+that applies to every Git repository on your machine.</p>
+
+<p>Start by making a <code class="highlighter-rouge">.gitignore</code> file in your home directory,
+with the files you want to ignore, and place in your home directory:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># ~/.gitignore</span>
+
+.vimrc.local
+<span class="k">*</span>.swp
+
+.idea
+.DS_Store
+</code></pre></div></div>
+
+<p>Then, tell Git to use this file as global <code class="highlighter-rouge">.gitignore</code> by running in your shell:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git config <span class="nt">--global</span> core.excludesfile ~/.gitignore
+</code></pre></div></div>
+
+<p>You can also take inspiration from my own
+<a href="https://github.com/aliou/dotfiles/blob/master/git/gitignore" target="_blank"> global .gitignore file</a>. Enjoy!</p>
+</p>
+</article>
+
+    </main>
+  </body>
+  <script src="/assets/app.js" type="text/javascript"></script>
+</html>
