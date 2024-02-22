@@ -1,8 +1,16 @@
 :root {
   /* Colors */
-  --brand-dark: #222222;
-  --brand-light: #f9fcf6;
-  --brand-highlight: #0e7e84;
+  /* Inspired by <https://twitter.com/alexcristache/status/1742581268284317800>; */
+  --volcanic-pearl: #F0EDED;
+  --cherry-frosting: #EBE0E1;
+  --lunar-blue: #E0E6EB;
+  --redstone: #E46B71;
+  --dark-slate-blue: #214761;
+  --knight-rider: #0F0707;
+
+  --brand-dark: var(--knight-rider);
+  --brand-light: var(--volcanic-pearl);
+  --brand-highlight: var(--redstone);
 
   /* Transition variables. */
   --duration: 1s;
@@ -11,6 +19,14 @@
   /* Variable updated by the color scheme. */
   --foreground-color: var(--brand-dark);
   --background-color: var(--brand-light);
+
+  /* Fonts */
+  font-family: Inter, sans-serif;
+  font-feature-settings: 'liga' 1, 'calt' 1; /* fix for Chrome */
+}
+
+@supports (font-variation-settings: normal) {
+  :root { font-family: InterVariable, sans-serif; }
 }
 
 ::selection {
@@ -38,7 +54,6 @@
   --background-color: var(--brand-dark);
 }
 
-@import url("https://rsms.me/inter/inter.css");
 html {
   font-family: "Inter", sans-serif;
 }
@@ -79,10 +94,10 @@ a.header-link:hover {
 }
 
 .container {
-  margin-left: auto;
-  margin-right: auto;
-  max-width: 42rem;
-  padding: 2.625rem 1.3125rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
 }
 
 header {
@@ -106,6 +121,9 @@ header {
 }
 
 .content {
+  max-width: 42rem;
+  align-self: center;
+  justify-self: center;
 }
 
 .home-content {
